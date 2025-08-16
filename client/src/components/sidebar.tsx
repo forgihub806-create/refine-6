@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, Plus, Folder, Edit2, Trash2, Settings } from "lucide-react";
+import { X, Plus, Folder, Edit2, Trash2, Settings, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -107,6 +108,7 @@ export function Sidebar({
     mutationFn: (categoryId: string) => deleteCategoryApi(categoryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
       toast({
         title: "Category Deleted",
         description: "Successfully deleted category.",
@@ -125,6 +127,7 @@ export function Sidebar({
     mutationFn: (tagId: string) => deleteTagApi(tagId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
+      queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
       toast({
         title: "Tag Deleted",
         description: "Successfully deleted tag.",
@@ -385,6 +388,18 @@ export function Sidebar({
               </div>
             </RadioGroup>
           </div>
+
+          <Separator className="my-6" />
+
+          <div>
+            <Button variant="outline" className="w-full" asChild>
+              <Link to="/duplicates">
+                <Copy className="h-4 w-4 mr-2" />
+                View Duplicates
+              </Link>
+            </Button>
+          </div>
+
         </div>
       </aside>
     </>

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { type IStorage } from "./storage.ts";
-import { insertMediaItemSchema, insertTagSchema, insertCategorySchema, type MediaSearchParams, type InsertMediaItem } from "../shared/schema.ts";
+import { insertMediaItemSchema, insertTagSchema, insertCategorySchema, type MediaSearchParams, type InsertMediaItem } from "@shared/schema.ts";
 import { z } from "zod";
 import { WebSocketServer } from 'ws';
 
@@ -271,6 +271,76 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
     }
   });
 
+  app.post("/api/media/:id/download", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { apiId } = req.body;
+
+      if (!apiId) {
+        return res.status(400).json({ error: "apiId is required" });
+      }
+
+      const mediaItem = await storage.getMediaItem(id);
+      if (!mediaItem) {
+        return res.status(404).json({ error: "Media item not found" });
+      }
+
+      const apiOption = await storage.getApiOptionByName(apiId);
+      if (!apiOption) {
+        return res.status(404).json({ error: `API option '${apiId}' not found` });
+      }
+
+      const proxyUrl = `${BASE_URL}${apiOption.url}`;
+
+      const proxyRes = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: mediaItem.url }),
+      });
+
+      if (!proxyRes.ok) {
+        const errorText = await proxyRes.text();
+        throw new Error(`Proxy request failed with status ${proxyRes.status}: ${errorText}`);
+      }
+
+      const proxyData = await proxyRes.json();
+      const downloadUrl = proxyData.downloadUrl || proxyData.url || (proxyData.data && proxyData.data.url);
+
+      if (!downloadUrl) {
+        return res.status(500).json({ error: "Failed to extract download URL from proxy response", data: proxyData });
+      }
+
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // Expires in 24 hours
+
+      await storage.updateMediaItem(id, {
+        downloadUrl: downloadUrl,
+        downloadExpiresAt: expiresAt,
+        downloadFetchedAt: new Date(),
+      });
+
+      res.json({
+        source: apiId,
+        downloadUrl: downloadUrl,
+        expiresAt: expiresAt.toISOString(),
+      });
+
+    } catch (error) {
+      console.error("Error getting download URL:", error);
+      res.status(500).json({ error: "Failed to get download URL" });
+    }
+  });
+
+  app.get("/api/media/duplicates", async (req: Request, res: Response) => {
+    try {
+      const duplicates = await storage.getDuplicateMediaItems();
+      res.json(duplicates);
+    } catch (error) {
+      console.error("Error getting duplicate media items:", error);
+      res.status(500).json({ error: "Failed to fetch duplicate media items" });
+    }
+  });
+
+
   // Tags Routes
   app.get("/api/tags", async (req: Request, res: Response) => {
     try {
@@ -285,12 +355,18 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
   app.post("/api/tags", async (req: Request, res: Response) => {
     try {
       const validatedData = insertTagSchema.parse(req.body);
+      // Check if tag with the same name already exists
+      const existingTag = await storage.getTagByName(validatedData.name);
+      if (existingTag) {
+        return res.status(409).json({ error: `Tag "${validatedData.name}" already exists.` });
+      }
       const tag = await storage.createTag(validatedData);
       res.status(201).json(tag);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
       }
+      console.error("Error creating tag:", error);
       res.status(500).json({ error: "Failed to create tag" });
     }
   });

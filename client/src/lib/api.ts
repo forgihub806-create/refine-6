@@ -87,11 +87,13 @@ export const deleteApiOption = (id: string) => apiRequest<{ success: boolean }>(
 export const updateMediaItem = (id: string, updates: Partial<any>) => apiRequest<any>('PUT', `/api/media/${id}`, updates);
 export const deleteMediaItem = (id: string) => apiRequest<{ success: boolean }>('DELETE', `/api/media/${id}`);
 export const getDownloadUrl = (id: string, apiId?: string) => {
-  const query = apiId ? `?apiId=${apiId}` : '';
-  return apiRequest<{ source: string; downloadUrl: string; expiresAt: string; proxy?: string }>('GET', `/api/media/${id}/download${query}`);
+  return apiRequest<{ source:string; downloadUrl: string; expiresAt: string; proxy?: string }>('POST', `/api/media/${id}/download`, { apiId });
 };
 
 export const checkAndFetchMetadata = (id: string) => apiRequest<{ success: boolean; mediaItem: any; action: string }>('POST', `/api/media/${id}/metadata`);
+
+// Duplicates
+export const getDuplicateMediaItems = () => apiRequest<Record<string, any[]>>('GET', '/api/media/duplicates');
 
 // Download functions
 export const downloadFile = async (url: string, filename: string) => {

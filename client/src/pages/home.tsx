@@ -152,11 +152,18 @@ export default function Home() {
             
             {/* Page Header */}
             <div className="flex items-center justify-between mb-8">
-              <div>
+              <div className="flex items-center space-x-4">
                 <h2 className="text-2xl font-bold">Media Library</h2>
-                <p className="text-slate-400 mt-1">
-                  {mediaResult ? `Showing ${mediaResult.items.length} of ${mediaResult.total} items` : 'Loading...'}
-                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetch()}
+                  disabled={isLoading}
+                  className="p-2"
+                  title="Refresh"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </Button>
               </div>
               <div className="flex items-center space-x-4">
                 <Select value={sortBy} onValueChange={setSortBy}>

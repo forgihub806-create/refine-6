@@ -68,6 +68,7 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
         .then(() => {
           // Refresh the query to get updated data
           queryClient.invalidateQueries({ queryKey: ['mediaItem', mediaId] });
+          queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
         })
         .catch(error => {
           console.error("Failed to fetch metadata:", error);
@@ -89,6 +90,7 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
     mutationFn: () => refreshMetadata(mediaId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mediaItem', mediaId] });
+      queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
       toast({
         title: "Metadata Refreshed",
         description: "Successfully updated metadata from external sources.",

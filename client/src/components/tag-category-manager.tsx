@@ -23,21 +23,42 @@ export function TagCategoryManager({ mediaId, assignedTags, assignedCategories }
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const invalidateMediaItem = () => {
+  const invalidateMediaData = () => {
     queryClient.invalidateQueries({ queryKey: ['mediaItem', mediaId] });
+    queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
   };
 
-  const addTagMutation = useMutation({ mutationFn: (tagId: string) => addTagToMediaItem(mediaId, tagId), onSuccess: invalidateMediaItem });
-  const removeTagMutation = useMutation({ mutationFn: (tagId: string) => removeTagFromMediaItem(mediaId, tagId), onSuccess: invalidateMediaItem });
-  const createTagMutation = useMutation({ mutationFn: (name: string) => createTag(name, "primary"), onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['tags'] });
-    setNewTagName("");
-  }});
+  const addTagMutation = useMutation({ mutationFn: (tagId: string) => addTagToMediaItem(mediaId, tagId), onSuccess: invalidateMediaData });
+  const removeTagMutation = useMutation({ mutationFn: (tagId: string) => removeTagFromMediaItem(mediaId, tagId), onSuccess: invalidateMediaData });
+  const createTagMutation = useMutation({
+    mutationFn: (name: string) => createTag(name, "primary"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
+      setNewTagName("");
+    },
+    onError: (error: any) => {
+      if (error.message && error.message.includes("409")) {
+        toast({
+          title: "Tag already exists",
+          description: "A tag with this name already exists.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Failed to create tag",
+          description: error.message || "An unknown error occurred.",
+          variant: "destructive",
+        });
+      }
+    }
+  });
 
-  const addCategoryMutation = useMutation({ mutationFn: (categoryId: string) => addCategoryToMediaItem(mediaId, categoryId), onSuccess: invalidateMediaItem });
-  const removeCategoryMutation = useMutation({ mutationFn: (categoryId: string) => removeCategoryFromMediaItem(mediaId, categoryId), onSuccess: invalidateMediaItem });
+  const addCategoryMutation = useMutation({ mutationFn: (categoryId: string) => addCategoryToMediaItem(mediaId, categoryId), onSuccess: invalidateMediaData });
+  const removeCategoryMutation = useMutation({ mutationFn: (categoryId: string) => removeCategoryFromMediaItem(mediaId, categoryId), onSuccess: invalidateMediaData });
   const createCategoryMutation = useMutation({ mutationFn: (name: string) => createCategory(name), onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ['categories'] });
+    queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
     setNewCategoryName("");
   }});
 

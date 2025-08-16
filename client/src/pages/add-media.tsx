@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createMediaItems } from "@/lib/api";
@@ -9,6 +9,7 @@ import { Link } from "wouter";
 export default function AddMedia() {
   const [urls, setUrls] = useState("");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const addMediaMutation = useMutation({
     mutationFn: (urls: string[]) => createMediaItems(urls),
@@ -18,6 +19,7 @@ export default function AddMedia() {
         description: "Successfully added new media items. They will be processed in the background.",
       });
       setUrls("");
+      queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
     },
     onError: (error) => {
       toast({

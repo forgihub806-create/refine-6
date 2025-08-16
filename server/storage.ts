@@ -19,6 +19,7 @@ export interface IStorage {
   createMediaItem(item: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: string, updates: Partial<MediaItem>): Promise<MediaItem | undefined>;
   deleteMediaItem(id: string): Promise<boolean>;
+  getDuplicateMediaItems(): Promise<Record<string, MediaItem[]>>;
 
   // Tags
   getTags(): Promise<Tag[]>;
@@ -49,6 +50,7 @@ export interface IStorage {
   // API Options
   getApiOptions(): Promise<ApiOption[]>;
   getApiOption(id: string): Promise<ApiOption | undefined>;
+  getApiOptionByName(name: string): Promise<ApiOption | undefined>;
   createApiOption(option: InsertApiOption): Promise<ApiOption>;
   updateApiOption(id: string, updates: Partial<ApiOption>): Promise<ApiOption | undefined>;
   deleteApiOption(id: string): Promise<boolean>;
@@ -97,33 +99,73 @@ export class DrizzleStorage implements IStorage {
     const { search, tags: tagFilter, categories: categoryFilter, type, sizeRange, page = 1, limit = 20 } = params;
 
     const qb = this.db.select({
-      id: schema.mediaItems.id,
-      title: schema.mediaItems.title,
-      url: schema.mediaItems.url,
-      thumbnail: schema.mediaItems.thumbnail,
-      type: schema.mediaItems.type,
-      createdAt: schema.mediaItems.createdAt,
+        // Select all fields from mediaItems
+        ...schema.mediaItems
+    }).from(schema.mediaItems);
+
+    const countQb = this.db.select({
+        count: sql<number>`count(DISTINCT ${schema.mediaItems.id})`
     }).from(schema.mediaItems);
 
     if (tagFilter && tagFilter.length > 0) {
       qb.leftJoin(schema.mediaItemTags, eq(schema.mediaItems.id, schema.mediaItemTags.mediaItemId))
         .leftJoin(schema.tags, eq(schema.mediaItemTags.tagId, schema.tags.id))
         .where(inArray(schema.tags.name, tagFilter));
+
+      countQb.leftJoin(schema.mediaItemTags, eq(schema.mediaItems.id, schema.mediaItemTags.mediaItemId))
+        .leftJoin(schema.tags, eq(schema.mediaItemTags.tagId, schema.tags.id))
+        .where(inArray(schema.tags.name, tagFilter));
     }
 
-    // The rest of the filters (search, type, etc.) would be added here in a similar fashion.
-    // For brevity, I am omitting them, but this shows the approach.
+    if (search) {
+        qb.where(like(schema.mediaItems.title, `%${search}%`));
+        countQb.where(like(schema.mediaItems.title, `%${search}%`));
+    }
 
-    const items = await qb.limit(limit).offset((page - 1) * limit).orderBy(desc(schema.mediaItems.createdAt));
-    const total = 0; // Placeholder for total count
+    // The rest of the filters (type, etc.) would be added here.
 
-    const detailedItems = await Promise.all(
-      items.map((item) => this.getMediaItem(item.id))
-    );
+    const items = await qb.groupBy(schema.mediaItems.id).limit(limit).offset((page - 1) * limit).orderBy(desc(schema.mediaItems.createdAt));
 
-    const itemsWithTagsAndCategories = detailedItems.filter(
-      (item): item is MediaItemWithTagsAndCategories => item !== undefined
-    );
+    const totalResult = await countQb;
+    const total = totalResult[0].count;
+
+    if (items.length === 0) {
+        return { items: [], total };
+    }
+
+    const itemIds = items.map(item => item.id);
+
+    const tags = await this.db.query.mediaItemTags.findMany({
+        where: inArray(schema.mediaItemTags.mediaItemId, itemIds),
+        with: { tag: true }
+    });
+
+    const categories = await this.db.query.mediaItemCategories.findMany({
+        where: inArray(schema.mediaItemCategories.mediaItemId, itemIds),
+        with: { category: true }
+    });
+
+    const tagsByItemId = tags.reduce((acc, itemTag) => {
+        if (!acc[itemTag.mediaItemId]) {
+            acc[itemTag.mediaItemId] = [];
+        }
+        acc[itemTag.mediaItemId].push(itemTag.tag);
+        return acc;
+    }, {} as Record<string, Tag[]>);
+
+    const categoriesByItemId = categories.reduce((acc, itemCategory) => {
+        if (!acc[itemCategory.mediaItemId]) {
+            acc[itemCategory.mediaItemId] = [];
+        }
+        acc[itemCategory.mediaItemId].push(itemCategory.category);
+        return acc;
+    }, {} as Record<string, Category[]>);
+
+    const itemsWithTagsAndCategories: MediaItemWithTagsAndCategories[] = items.map(item => ({
+        ...item,
+        tags: tagsByItemId[item.id] || [],
+        categories: categoriesByItemId[item.id] || []
+    }));
 
     return { items: itemsWithTagsAndCategories, total };
   }
@@ -183,6 +225,39 @@ export class DrizzleStorage implements IStorage {
   async deleteMediaItem(id: string): Promise<boolean> {
     await this.db.delete(schema.mediaItems).where(eq(schema.mediaItems.id, id));
     return true;
+  }
+
+  async getDuplicateMediaItems(): Promise<Record<string, MediaItem[]>> {
+    const duplicateUrlsQuery = this.db
+      .select({
+        url: schema.mediaItems.url,
+        count: sql<number>`count(${schema.mediaItems.id})`.mapWith(Number),
+      })
+      .from(schema.mediaItems)
+      .groupBy(schema.mediaItems.url)
+      .having(sql`count > 1`);
+
+    const duplicateUrlRows = await duplicateUrlsQuery;
+    const urls = duplicateUrlRows.map(row => row.url);
+
+    if (urls.length === 0) {
+      return {};
+    }
+
+    const duplicateItems = await this.db.query.mediaItems.findMany({
+      where: inArray(schema.mediaItems.url, urls),
+      orderBy: [asc(schema.mediaItems.url), asc(schema.mediaItems.createdAt)],
+    });
+
+    const groupedByUrl = duplicateItems.reduce((acc, item) => {
+      if (!acc[item.url]) {
+        acc[item.url] = [];
+      }
+      acc[item.url].push(item);
+      return acc;
+    }, {} as Record<string, MediaItem[]>);
+
+    return groupedByUrl;
   }
 
   // Tags
@@ -297,6 +372,10 @@ export class DrizzleStorage implements IStorage {
 
   async getApiOption(id: string): Promise<ApiOption | undefined> {
     return await this.db.query.apiOptions.findFirst({ where: eq(schema.apiOptions.id, id) });
+  }
+
+  async getApiOptionByName(name: string): Promise<ApiOption | undefined> {
+    return await this.db.query.apiOptions.findFirst({ where: eq(schema.apiOptions.name, name) });
   }
 
   async createApiOption(insertOption: InsertApiOption): Promise<ApiOption> {
