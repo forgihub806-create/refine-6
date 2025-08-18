@@ -13,11 +13,25 @@ export default function AddMedia() {
 
   const addMediaMutation = useMutation({
     mutationFn: (urls: string[]) => createMediaItems(urls),
-    onSuccess: () => {
-      toast({
-        title: "Media Added",
-        description: "Successfully added new media items. They will be processed in the background.",
-      });
+    onSuccess: (data: any[]) => {
+      const createdCount = data.filter(r => r.status === 'created').length;
+      const duplicateCount = data.filter(r => r.status === 'duplicate').length;
+
+      if (createdCount > 0) {
+        toast({
+          title: "Media Added",
+          description: `${createdCount} new media item(s) were successfully added.`,
+        });
+      }
+
+      if (duplicateCount > 0) {
+        toast({
+          title: "Duplicates Found",
+          description: `${duplicateCount} URL(s) already existed in the library.`,
+          variant: "default",
+        });
+      }
+
       setUrls("");
       queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
       queryClient.invalidateQueries({ queryKey: ['duplicatesCount'] });

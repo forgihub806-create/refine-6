@@ -196,20 +196,24 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
   app.post("/api/media", async (req: Request, res: Response) => {
     try {
       const { urls } = z.object({ urls: z.array(z.string().url()) }).parse(req.body);
-      const createdItems = [];
+      const results = [];
 
       for (const url of urls) {
-      // Always create a new item, allowing duplicates
-      const mediaItem = await storage.createMediaItem({
-        url,
-        title: "Processing...",
-        description: null,
-        thumbnail: null
-      });
-        createdItems.push(mediaItem);
+        const existingItem = await storage.getMediaItemByUrl(url);
+        if (existingItem) {
+          results.push({ url, status: 'duplicate', item: existingItem });
+        } else {
+          const newItem = await storage.createMediaItem({
+            url,
+            title: "Processing...",
+            description: null,
+            thumbnail: null
+          });
+          results.push({ url, status: 'created', item: newItem });
+        }
       }
 
-      res.status(201).json(createdItems);
+      res.status(201).json(results);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });

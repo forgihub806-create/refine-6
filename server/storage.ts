@@ -117,6 +117,16 @@ export class DrizzleStorage implements IStorage {
         .where(inArray(schema.tags.name, tagFilter));
     }
 
+    if (categoryFilter && categoryFilter.length > 0) {
+      qb.leftJoin(schema.mediaItemCategories, eq(schema.mediaItems.id, schema.mediaItemCategories.mediaItemId))
+        .leftJoin(schema.categories, eq(schema.mediaItemCategories.categoryId, schema.categories.id))
+        .where(inArray(schema.categories.name, categoryFilter));
+
+      countQb.leftJoin(schema.mediaItemCategories, eq(schema.mediaItems.id, schema.mediaItemCategories.mediaItemId))
+        .leftJoin(schema.categories, eq(schema.mediaItemCategories.categoryId, schema.categories.id))
+        .where(inArray(schema.categories.name, categoryFilter));
+    }
+
     if (search) {
         qb.where(like(schema.mediaItems.title, `%${search}%`));
         countQb.where(like(schema.mediaItems.title, `%${search}%`));
