@@ -199,18 +199,20 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
       const results = [];
 
       for (const url of urls) {
-        const existingItem = await storage.getMediaItemByUrl(url);
-        if (existingItem) {
-          results.push({ url, status: 'duplicate', item: existingItem });
-        } else {
-          const newItem = await storage.createMediaItem({
-            url,
-            title: "Processing...",
-            description: null,
-            thumbnail: null
-          });
-          results.push({ url, status: 'created', item: newItem });
-        }
+        const isDuplicate = !!(await storage.getMediaItemByUrl(url));
+
+        const newItem = await storage.createMediaItem({
+          url,
+          title: "Processing...",
+          description: null,
+          thumbnail: null
+        });
+
+        results.push({
+          url,
+          status: isDuplicate ? 'created_duplicate' : 'created_new',
+          item: newItem
+        });
       }
 
       res.status(201).json(results);
