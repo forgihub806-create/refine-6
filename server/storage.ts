@@ -50,7 +50,6 @@ export interface IStorage {
   // API Options
   getApiOptions(): Promise<ApiOption[]>;
   getApiOption(id: string): Promise<ApiOption | undefined>;
-  getApiOptionByName(name: string): Promise<ApiOption | undefined>;
   createApiOption(option: InsertApiOption): Promise<ApiOption>;
   updateApiOption(id: string, updates: Partial<ApiOption>): Promise<ApiOption | undefined>;
   deleteApiOption(id: string): Promise<boolean>;
@@ -99,7 +98,6 @@ export class DrizzleStorage implements IStorage {
     const { search, tags: tagFilter, categories: categoryFilter, type, sizeRange, page = 1, limit = 20 } = params;
 
     const qb = this.db.select({
-        // Select all fields from mediaItems
         ...schema.mediaItems
     }).from(schema.mediaItems);
 
@@ -107,32 +105,48 @@ export class DrizzleStorage implements IStorage {
         count: sql<number>`count(DISTINCT ${schema.mediaItems.id})`
     }).from(schema.mediaItems);
 
-    if (tagFilter && tagFilter.length > 0) {
-      qb.leftJoin(schema.mediaItemTags, eq(schema.mediaItems.id, schema.mediaItemTags.mediaItemId))
-        .leftJoin(schema.tags, eq(schema.mediaItemTags.tagId, schema.tags.id))
-        .where(inArray(schema.tags.name, tagFilter));
+    const conditions = [];
 
-      countQb.leftJoin(schema.mediaItemTags, eq(schema.mediaItems.id, schema.mediaItemTags.mediaItemId))
-        .leftJoin(schema.tags, eq(schema.mediaItemTags.tagId, schema.tags.id))
-        .where(inArray(schema.tags.name, tagFilter));
+    if (tagFilter && tagFilter.length > 0) {
+        qb.leftJoin(schema.mediaItemTags, eq(schema.mediaItems.id, schema.mediaItemTags.mediaItemId));
+        countQb.leftJoin(schema.mediaItemTags, eq(schema.mediaItems.id, schema.mediaItemTags.mediaItemId));
+        conditions.push(inArray(schema.mediaItemTags.tagId, this.db.select({ id: schema.tags.id }).from(schema.tags).where(inArray(schema.tags.name, tagFilter))));
+    }
+
+    if (categoryFilter && categoryFilter.length > 0 || search) {
+        qb.leftJoin(schema.mediaItemCategories, eq(schema.mediaItems.id, schema.mediaItemCategories.mediaItemId))
+          .leftJoin(schema.categories, eq(schema.mediaItemCategories.categoryId, schema.categories.id));
+        countQb.leftJoin(schema.mediaItemCategories, eq(schema.mediaItems.id, schema.mediaItemCategories.mediaItemId))
+          .leftJoin(schema.categories, eq(schema.mediaItemCategories.categoryId, schema.categories.id));
     }
 
     if (categoryFilter && categoryFilter.length > 0) {
-      qb.leftJoin(schema.mediaItemCategories, eq(schema.mediaItems.id, schema.mediaItemCategories.mediaItemId))
-        .leftJoin(schema.categories, eq(schema.mediaItemCategories.categoryId, schema.categories.id))
-        .where(inArray(schema.categories.name, categoryFilter));
-
-      countQb.leftJoin(schema.mediaItemCategories, eq(schema.mediaItems.id, schema.mediaItemCategories.mediaItemId))
-        .leftJoin(schema.categories, eq(schema.mediaItemCategories.categoryId, schema.categories.id))
-        .where(inArray(schema.categories.name, categoryFilter));
+        conditions.push(inArray(schema.categories.name, categoryFilter));
     }
 
     if (search) {
-        qb.where(like(schema.mediaItems.title, `%${search}%`));
-        countQb.where(like(schema.mediaItems.title, `%${search}%`));
+        conditions.push(sql`(${like(schema.mediaItems.title, `%${search}%`)} or ${like(schema.categories.name, `%${search}%`)})`);
     }
 
-    // The rest of the filters (type, etc.) would be added here.
+    if (type) {
+        conditions.push(eq(schema.mediaItems.type, type));
+    }
+
+    if (sizeRange) {
+        const sizeConditions = {
+            small: sql`${schema.mediaItems.size} < ${100 * 1024 * 1024}`,
+            medium: sql`${schema.mediaItems.size} >= ${100 * 1024 * 1024} AND ${schema.mediaItems.size} < ${1024 * 1024 * 1024}`,
+            large: sql`${schema.mediaItems.size} >= ${1024 * 1024 * 1024}`,
+        };
+        if (sizeConditions[sizeRange]) {
+            conditions.push(sizeConditions[sizeRange]);
+        }
+    }
+
+    if (conditions.length > 0) {
+        qb.where(and(...conditions));
+        countQb.where(and(...conditions));
+    }
 
     const items = await qb.groupBy(schema.mediaItems.id).limit(limit).offset((page - 1) * limit).orderBy(desc(schema.mediaItems.createdAt));
 
@@ -239,35 +253,52 @@ export class DrizzleStorage implements IStorage {
 
   async getDuplicateMediaItems(): Promise<Record<string, MediaItem[]>> {
     const duplicateUrlsQuery = this.db
-      .select({
-        url: schema.mediaItems.url,
-        count: sql<number>`count(${schema.mediaItems.id})`.mapWith(Number),
-      })
+      .select({ url: schema.mediaItems.url })
       .from(schema.mediaItems)
       .groupBy(schema.mediaItems.url)
-      .having(sql`count > 1`);
+      .having(sql`count(*) > 1`);
 
-    const duplicateUrlRows = await duplicateUrlsQuery;
-    const urls = duplicateUrlRows.map(row => row.url);
+    const duplicateThumbnailsQuery = this.db
+      .select({ thumbnail: schema.mediaItems.thumbnail })
+      .from(schema.mediaItems)
+      .where(sql`${schema.mediaItems.thumbnail} IS NOT NULL`)
+      .groupBy(schema.mediaItems.thumbnail)
+      .having(sql`count(*) > 1`);
 
-    if (urls.length === 0) {
-      return {};
+    const [duplicateUrlRows, duplicateThumbnailRows] = await Promise.all([
+      duplicateUrlsQuery,
+      duplicateThumbnailsQuery,
+    ]);
+
+    const duplicateUrls = duplicateUrlRows.map(r => r.url);
+    const duplicateThumbnails = duplicateThumbnailRows.map(r => r.thumbnail).filter(t => t !== null) as string[];
+
+    if (duplicateUrls.length === 0 && duplicateThumbnails.length === 0) {
+        return {};
     }
 
     const duplicateItems = await this.db.query.mediaItems.findMany({
-      where: inArray(schema.mediaItems.url, urls),
-      orderBy: [asc(schema.mediaItems.url), asc(schema.mediaItems.createdAt)],
+        where: sql`(${inArray(schema.mediaItems.url, duplicateUrls)}) OR (${inArray(schema.mediaItems.thumbnail, duplicateThumbnails)})`,
+        orderBy: [asc(schema.mediaItems.url), asc(schema.mediaItems.thumbnail), asc(schema.mediaItems.createdAt)],
     });
 
-    const groupedByUrl = duplicateItems.reduce((acc, item) => {
-      if (!acc[item.url]) {
-        acc[item.url] = [];
-      }
-      acc[item.url].push(item);
-      return acc;
+    const grouped = duplicateItems.reduce((acc, item) => {
+        const key = item.url || item.thumbnail || item.id;
+        if (!acc[key]) {
+            acc[key] = [];
+        }
+        acc[key].push(item);
+        return acc;
     }, {} as Record<string, MediaItem[]>);
 
-    return groupedByUrl;
+    // Filter out groups with only one item, which can happen if an item's URL is a duplicate but its thumbnail is not (or vice versa)
+    Object.keys(grouped).forEach(key => {
+        if (grouped[key].length < 2) {
+            delete grouped[key];
+        }
+    });
+
+    return grouped;
   }
 
   // Tags
@@ -382,10 +413,6 @@ export class DrizzleStorage implements IStorage {
 
   async getApiOption(id: string): Promise<ApiOption | undefined> {
     return await this.db.query.apiOptions.findFirst({ where: eq(schema.apiOptions.id, id) });
-  }
-
-  async getApiOptionByName(name: string): Promise<ApiOption | undefined> {
-    return await this.db.query.apiOptions.findFirst({ where: eq(schema.apiOptions.name, name) });
   }
 
   async createApiOption(insertOption: InsertApiOption): Promise<ApiOption> {
