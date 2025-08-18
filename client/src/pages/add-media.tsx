@@ -20,6 +20,7 @@ export default function AddMedia() {
       });
       setUrls("");
       queryClient.invalidateQueries({ queryKey: ['mediaItems'] });
+      queryClient.invalidateQueries({ queryKey: ['duplicatesCount'] });
     },
     onError: (error) => {
       toast({

@@ -199,16 +199,13 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
       const createdItems = [];
 
       for (const url of urls) {
-        let mediaItem = await storage.getMediaItemByUrl(url);
-        if (!mediaItem) {
-          // Create with minimal metadata - don't auto-scrape
-          mediaItem = await storage.createMediaItem({
-            url,
-            title: "Processing...",
-            description: null,
-            thumbnail: null
-          });
-        }
+      // Always create a new item, allowing duplicates
+      const mediaItem = await storage.createMediaItem({
+        url,
+        title: "Processing...",
+        description: null,
+        thumbnail: null
+      });
         createdItems.push(mediaItem);
       }
 
@@ -337,6 +334,17 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
     } catch (error) {
       console.error("Error getting duplicate media items:", error);
       res.status(500).json({ error: "Failed to fetch duplicate media items" });
+    }
+  });
+
+  app.get("/api/media/duplicates/count", async (req: Request, res: Response) => {
+    try {
+      const duplicates = await storage.getDuplicateMediaItems();
+      const count = Object.keys(duplicates).length;
+      res.json({ count });
+    } catch (error) {
+      console.error("Error getting duplicate count:", error);
+      res.status(500).json({ error: "Failed to fetch duplicate count" });
     }
   });
 

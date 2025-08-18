@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Menu, Settings, RefreshCw, Grid3X3, List, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -68,6 +68,26 @@ export default function Home() {
   const closeModal = () => setSelectedMediaId(null);
 
   const totalPages = Math.ceil((mediaResult?.total || 0) / 20);
+
+  const sortedMediaItems = useMemo(() => {
+    if (!mediaResult?.items) return [];
+    const items = [...mediaResult.items];
+    switch (sortBy) {
+      case 'name':
+        return items.sort((a, b) => a.title.localeCompare(b.title));
+      case 'size':
+        return items.sort((a, b) => (b.size || 0) - (a.size || 0));
+      case 'category':
+        return items.sort((a, b) => {
+          const categoryA = a.categories?.[0]?.name || '';
+          const categoryB = b.categories?.[0]?.name || '';
+          return categoryA.localeCompare(categoryB);
+        });
+      case 'date':
+      default:
+        return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+  }, [mediaResult?.items, sortBy]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-50">
@@ -174,6 +194,7 @@ export default function Home() {
                     <SelectItem value="date">Sort by Date Added</SelectItem>
                     <SelectItem value="name">Sort by Name</SelectItem>
                     <SelectItem value="size">Sort by Size</SelectItem>
+                    <SelectItem value="category">Sort by Category</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="flex rounded-lg border border-slate-600 overflow-hidden">
@@ -227,7 +248,7 @@ export default function Home() {
             {/* Media Grid */}
             {mediaResult && !isLoading && (
               <>
-                {mediaResult.items.length === 0 ? (
+                {sortedMediaItems.length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-slate-400 mb-4">No media items found</p>
                     <p className="text-sm text-slate-500">
@@ -243,7 +264,7 @@ export default function Home() {
                       ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
                       : "grid-cols-1"
                   }`}>
-                    {mediaResult.items.map((item) => (
+                    {sortedMediaItems.map((item) => (
                       <MediaCard
                         key={item.id}
                         item={item}

@@ -94,6 +94,7 @@ export const checkAndFetchMetadata = (id: string) => apiRequest<{ success: boole
 
 // Duplicates
 export const getDuplicateMediaItems = () => apiRequest<Record<string, any[]>>('GET', '/api/media/duplicates');
+export const getDuplicatesCount = () => apiRequest<{ count: number }>('GET', '/api/media/duplicates/count');
 
 // Download functions
 export const downloadFile = async (url: string, filename: string) => {

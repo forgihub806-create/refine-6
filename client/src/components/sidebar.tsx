@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { getCategories, createCategory as createCategoryApi, deleteCategory as deleteCategoryApi, createTag as createTagApi, deleteTag as deleteTagApi } from "@/lib/api";
+import { getCategories, createCategory as createCategoryApi, deleteCategory as deleteCategoryApi, createTag as createTagApi, deleteTag as deleteTagApi, getDuplicatesCount } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Tag, Category } from "@shared/schema";
 
@@ -63,6 +63,7 @@ export function Sidebar({
 
   const { data: tags = [] } = useQuery<Tag[]>({ queryKey: ["/api/tags"] });
   const { data: categories = [] } = useQuery<Category[]>({ queryKey: ["/api/categories"], queryFn: getCategories });
+  const { data: duplicatesCount } = useQuery({ queryKey: ['duplicatesCount'], queryFn: getDuplicatesCount });
 
   const createTagMutation = useMutation({
     mutationFn: (tagData: { name: string; color: string }) => createTagApi(tagData.name, tagData.color),
@@ -392,10 +393,15 @@ export function Sidebar({
           <Separator className="my-6" />
 
           <div>
-            <Button variant="outline" className="w-full" asChild>
+            <Button variant="outline" className="w-full justify-between" asChild>
               <Link to="/duplicates">
-                <Copy className="h-4 w-4 mr-2" />
-                View Duplicates
+                <div className="flex items-center">
+                  <Copy className="h-4 w-4 mr-2" />
+                  View Duplicates
+                </div>
+                {duplicatesCount && duplicatesCount.count > 0 && (
+                  <Badge variant="destructive">{duplicatesCount.count}</Badge>
+                )}
               </Link>
             </Button>
           </div>
