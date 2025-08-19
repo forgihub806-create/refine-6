@@ -411,12 +411,17 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
   app.post("/api/categories", async (req: Request, res: Response) => {
     try {
       const validatedData = insertCategorySchema.parse(req.body);
+      const existingCategory = await storage.getCategoryByName(validatedData.name);
+      if (existingCategory) {
+        return res.status(409).json({ error: `Category "${validatedData.name}" already exists.` });
+      }
       const category = await storage.createCategory(validatedData);
       res.status(201).json(category);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
       }
+      console.error("Error creating category:", error);
       res.status(500).json({ error: "Failed to create category" });
     }
   });

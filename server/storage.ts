@@ -50,6 +50,7 @@ export interface IStorage {
   // API Options
   getApiOptions(): Promise<ApiOption[]>;
   getApiOption(id: string): Promise<ApiOption | undefined>;
+  getApiOptionByName(name: string): Promise<ApiOption | undefined>;
   createApiOption(option: InsertApiOption): Promise<ApiOption>;
   updateApiOption(id: string, updates: Partial<ApiOption>): Promise<ApiOption | undefined>;
   deleteApiOption(id: string): Promise<boolean>;
@@ -413,6 +414,10 @@ export class DrizzleStorage implements IStorage {
 
   async getApiOption(id: string): Promise<ApiOption | undefined> {
     return await this.db.query.apiOptions.findFirst({ where: eq(schema.apiOptions.id, id) });
+  }
+
+  async getApiOptionByName(name: string): Promise<ApiOption | undefined> {
+    return await this.db.query.apiOptions.findFirst({ where: eq(schema.apiOptions.name, name) });
   }
 
   async createApiOption(insertOption: InsertApiOption): Promise<ApiOption> {
