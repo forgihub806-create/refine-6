@@ -9,7 +9,7 @@ import { refreshMetadata, deleteMediaItem as deleteMediaItemApi, checkAndFetchMe
 import { useToast } from "@/hooks/use-toast";
 import type { MediaItemWithTagsAndCategories, ApiOption } from "@shared/schema";
 import { TagCategoryManager } from "./tag-category-manager";
-import { MediaManagement } from "./media-management";
+import { useLocation } from "wouter";
 
 interface DetailModalProps {
   mediaId: string;
@@ -55,6 +55,7 @@ const formatDuration = (seconds: number | null) => {
 
 export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -109,7 +110,19 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
     onSuccess: (data) => {
       try {
         const proxyData = JSON.parse(data.proxyResponse);
-        const downloadUrl = proxyData.downloadUrl || proxyData.url || (proxyData.data && proxyData.data.url);
+        let downloadUrl = null;
+
+        switch (data.source) {
+          case 'IteraPlay':
+            downloadUrl = proxyData.list?.[0]?.fast_stream_url?.['720p'];
+            break;
+          case 'TeraFast':
+            downloadUrl = proxyData.data?.download_link;
+            break;
+          default:
+            downloadUrl = proxyData.downloadUrl || proxyData.url || (proxyData.data && proxyData.data.url);
+            break;
+        }
 
         if (downloadUrl && mediaItem) {
           if (window.electronAPI?.downloadFile) {
@@ -120,7 +133,6 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
               description: `Downloading to your ChiperBox folder.`,
             });
           } else {
-            // Fallback for web environment
             window.open(downloadUrl, '_blank');
           }
         } else {
@@ -178,8 +190,47 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
     }
   };
 
+  const getPlayUrlMutation = useMutation({
+    mutationFn: (apiId: string) => getDownloadUrl(mediaId, apiId, mediaItem!.url),
+    onSuccess: (data) => {
+        try {
+            const proxyData = JSON.parse(data.proxyResponse);
+            const playUrl = proxyData.list?.[0]?.fast_stream_url?.['720p'] || proxyData.data?.player || proxyData.url || proxyData.downloadUrl;
+
+            if (playUrl && mediaItem) {
+                navigate(`/player?url=${encodeURIComponent(playUrl)}&title=${encodeURIComponent(mediaItem.title)}`);
+            } else {
+                throw new Error("Could not find a playable URL in the response.");
+            }
+        } catch (e) {
+            toast({
+                title: "Play Failed",
+                description: "Could not process the response from the API.",
+                variant: "destructive",
+            });
+        }
+    },
+    onError: (error) => {
+        toast({
+            title: "Play Failed",
+            description: error instanceof Error ? error.message : "Failed to get play URL",
+            variant: "destructive",
+        });
+    },
+  });
+
   const handlePlay = () => {
-    setIsPlaying(true);
+    // For now, let's just use the first available API for playing.
+    // This could be improved with a preferred API setting.
+    if (apiOptions.length > 0) {
+        getPlayUrlMutation.mutate(apiOptions[0].name);
+    } else {
+        toast({
+            title: "No APIs Available",
+            description: "There are no APIs configured to play this media.",
+            variant: "destructive",
+        });
+    }
   };
 
   if (mediaLoading) {
