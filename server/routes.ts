@@ -301,30 +301,16 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
         body: JSON.stringify({ url: mediaItem.url }),
       });
 
+      const proxyData = await proxyRes.text();
+
       if (!proxyRes.ok) {
-        const errorText = await proxyRes.text();
-        throw new Error(`Proxy request failed with status ${proxyRes.status}: ${errorText}`);
+        throw new Error(`Proxy request failed with status ${proxyRes.status}: ${proxyData}`);
       }
 
-      const proxyData = await proxyRes.json();
-      const downloadUrl = proxyData.downloadUrl || proxyData.url || (proxyData.data && proxyData.data.url);
-
-      if (!downloadUrl) {
-        return res.status(500).json({ error: "Failed to extract download URL from proxy response", data: proxyData });
-      }
-
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // Expires in 24 hours
-
-      await storage.updateMediaItem(id, {
-        downloadUrl: downloadUrl,
-        downloadExpiresAt: expiresAt,
-        downloadFetchedAt: new Date(),
-      });
-
+      // Send the raw proxy response to the client
       res.json({
         source: apiId,
-        downloadUrl: downloadUrl,
-        expiresAt: expiresAt.toISOString(),
+        proxyResponse: proxyData,
       });
 
     } catch (error) {

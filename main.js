@@ -1,4 +1,5 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import fs from 'fs';
 console.log('NODE_ENV:', process.env.NODE_ENV);
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -138,6 +139,29 @@ async function healthCheck(port) {
   }
   console.warn('Health check failed after 30 attempts, continuing anyway');
 }
+
+ipcMain.handle('download-file', async (event, { url, filename }) => {
+  try {
+    const downloadPath = path.join(app.getPath('downloads'), 'ChiperBox');
+    if (!fs.existsSync(downloadPath)) {
+      fs.mkdirSync(downloadPath, { recursive: true });
+    }
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const filePath = path.join(downloadPath, filename);
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('Download failed:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 app.whenReady().then(async () => {
   try {

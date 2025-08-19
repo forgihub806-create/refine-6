@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onServerInfo: (callback) => {
     ipcRenderer.on('server-info', callback);
+  },
+  downloadFile: (url, filename) => {
+    return ipcRenderer.invoke('download-file', { url, filename });
   }
 });
 

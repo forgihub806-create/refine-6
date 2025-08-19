@@ -54,7 +54,6 @@ const formatDuration = (seconds: number | null) => {
 };
 
 export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
-  const [selectedApiId, setSelectedApiId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -106,16 +105,32 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
   });
 
   const getDownloadUrlMutation = useMutation({
-    mutationFn: async () => {
-      return getDownloadUrl(mediaId, selectedApiId || undefined);
-    },
+    mutationFn: (apiId: string) => getDownloadUrl(mediaId, apiId),
     onSuccess: (data) => {
-      if (data.downloadUrl) {
-        // Open download URL in new tab
-        window.open(data.downloadUrl, '_blank');
+      try {
+        const proxyData = JSON.parse(data.proxyResponse);
+        const downloadUrl = proxyData.downloadUrl || proxyData.url || (proxyData.data && proxyData.data.url);
+
+        if (downloadUrl && mediaItem) {
+          if (window.electronAPI?.downloadFile) {
+            const filename = `${mediaItem.title}.mp4`; // Assuming mp4, should be improved
+            window.electronAPI.downloadFile(downloadUrl, filename);
+            toast({
+              title: "Download Started",
+              description: `Downloading to your ChiperBox folder.`,
+            });
+          } else {
+            // Fallback for web environment
+            window.open(downloadUrl, '_blank');
+          }
+        } else {
+          throw new Error("Could not find a download URL in the response.");
+        }
+      } catch (e) {
         toast({
-          title: "Download Started",
-          description: `Using ${data.proxy || 'cached'} source`,
+          title: "Download Failed",
+          description: "Could not process the response from the API.",
+          variant: "destructive",
         });
       }
     },
@@ -151,18 +166,14 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
     refreshMetadataMutation.mutate();
   };
 
-  const handleDownload = () => {
-    getDownloadUrlMutation.mutate();
+  const handleDownload = (apiId: string) => {
+    getDownloadUrlMutation.mutate(apiId);
   };
 
   const handleDelete = () => {
     if (confirm("Are you sure you want to delete this media item? This action cannot be undone.")) {
       deleteMediaMutation.mutate();
     }
-  };
-
-  const handleApiSelect = (apiId: string) => {
-    setSelectedApiId(apiId);
   };
 
   const handlePlay = () => {
@@ -314,37 +325,17 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {apiOptions.map((api) => (
-                  <div
+                  <Button
                     key={api.id}
-                    onClick={() => handleApiSelect(api.id)}
-                    className={`border rounded-lg p-3 cursor-pointer transition-all ${
-                      selectedApiId === api.id
-                        ? 'border-primary bg-primary/10'
-                        : 'border-slate-600 hover:border-primary/50'
-                    }`}
+                    onClick={() => handleDownload(api.name)}
+                    disabled={getDownloadUrlMutation.isPending}
+                    className="w-full justify-start"
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium text-sm">{api.name}</h4>
-                        <p className="text-xs text-slate-400 capitalize">{api.status}</p>
-                      </div>
-                      <div className={`w-2 h-2 rounded-full ${
-                        api.status === 'available' ? 'bg-emerald-500' :
-                        api.status === 'limited' ? 'bg-amber-500' :
-                        'bg-red-500'
-                      }`} />
-                    </div>
-                  </div>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download with {api.name}
+                  </Button>
                 ))}
               </div>
-              <Button
-                onClick={handleDownload}
-                disabled={getDownloadUrlMutation.isPending || !selectedApiId}
-                className="w-full mt-4 bg-primary text-white hover:bg-primary/80"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {getDownloadUrlMutation.isPending ? 'Getting Download Link...' : 'Start Download'}
-              </Button>
             </div>
           </div>
 
@@ -383,15 +374,6 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
               assignedTags={mediaItem.tags || []}
               assignedCategories={mediaItem.categories || []}
             />
-
-            {/* Media Management */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-4">Media Management</h3>
-              <MediaManagement
-                mediaItem={mediaItem}
-                apiOptions={apiOptions}
-              />
-            </div>
 
             {/* Folder Contents (if folder) */}
             {isFolder && (

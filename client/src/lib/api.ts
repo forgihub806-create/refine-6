@@ -87,7 +87,7 @@ export const deleteApiOption = (id: string) => apiRequest<{ success: boolean }>(
 export const updateMediaItem = (id: string, updates: Partial<any>) => apiRequest<any>('PUT', `/api/media/${id}`, updates);
 export const deleteMediaItem = (id: string) => apiRequest<{ success: boolean }>('DELETE', `/api/media/${id}`);
 export const getDownloadUrl = (id: string, apiId?: string) => {
-  return apiRequest<{ source:string; downloadUrl: string; expiresAt: string; proxy?: string }>('POST', `/api/media/${id}/download`, { apiId });
+  return apiRequest<{ source: string; proxyResponse: string }>('POST', `/api/media/${id}/download`, { apiId });
 };
 
 export const checkAndFetchMetadata = (id: string) => apiRequest<{ success: boolean; mediaItem: any; action: string }>('POST', `/api/media/${id}/metadata`);
