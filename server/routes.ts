@@ -11,7 +11,6 @@ import { iteraplayProxy } from "./api-proxies/iteraplay.ts";
 import { playerteraProxy } from "./api-proxies/playertera.ts";
 import { mdiskProxy } from "./api-proxies/mdisk.ts";
 import { rapidapiProxy } from "./api-proxies/rapidapi.ts";
-import { teraDownloaderCcProxy } from "./api-proxies/tera-downloader-cc.ts";
 import { teradwnProxy } from "./api-proxies/teradwn.ts";
 
 // MultiScraper integration
@@ -19,6 +18,15 @@ import fetch from "node-fetch";
 
 const PORT = process.env.PORT || 5000;
 const BASE_URL = `http://localhost:${PORT}`;
+
+const API_CONFIG = {
+  IteraPlay: { proxy: iteraplayProxy, field: "link" },
+  PlayerTera: { proxy: playerteraProxy, field: "url" },
+  RapidAPI: { proxy: rapidapiProxy, field: "link" },
+  RaspyWave: { proxy: null, field: "link" }, // raspywave.ts does not exist
+  TeraDownloadr: { proxy: teradwnProxy, field: "link" },
+  TeraFast: { proxy: teraboxFastProxy, field: "url" }
+};
 
 
 async function scrapeMetadata(mediaItemId: string, storage: IStorage) {
@@ -276,42 +284,26 @@ export function registerRoutes(app: Express, storage: IStorage): Server {
 
   app.post("/api/media/:id/download", async (req: Request, res: Response) => {
     try {
-      const { id } = req.params;
-      const { apiId } = req.body;
+      const { apiId, mediaUrl } = req.body;
 
-      if (!apiId) {
-        return res.status(400).json({ error: "apiId is required" });
+      if (!apiId || !mediaUrl) {
+        return res.status(400).json({ error: "apiId and mediaUrl are required" });
       }
 
-      const mediaItem = await storage.getMediaItem(id);
-      if (!mediaItem) {
-        return res.status(404).json({ error: "Media item not found" });
+      const apiConfig = API_CONFIG[apiId as keyof typeof API_CONFIG];
+
+      if (!apiConfig || !apiConfig.proxy) {
+        return res.status(400).json({ error: `Invalid or unsupported API ID: ${apiId}` });
       }
 
-      const apiOption = await storage.getApiOptionByName(apiId);
-      if (!apiOption) {
-        return res.status(404).json({ error: `API option '${apiId}' not found` });
-      }
+      // Create a new request object for the proxy
+      const proxyReq = {
+        ...req,
+        body: { [apiConfig.field]: mediaUrl },
+      } as Request;
 
-      const proxyUrl = `${BASE_URL}${apiOption.url}`;
-
-      const proxyRes = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: mediaItem.url }),
-      });
-
-      const proxyData = await proxyRes.text();
-
-      if (!proxyRes.ok) {
-        throw new Error(`Proxy request failed with status ${proxyRes.status}: ${proxyData}`);
-      }
-
-      // Send the raw proxy response to the client
-      res.json({
-        source: apiId,
-        proxyResponse: proxyData,
-      });
+      // Call the proxy function
+      await apiConfig.proxy(proxyReq, res);
 
     } catch (error) {
       console.error("Error getting download URL:", error);

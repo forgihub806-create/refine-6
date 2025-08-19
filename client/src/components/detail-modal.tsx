@@ -105,7 +105,7 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
   });
 
   const getDownloadUrlMutation = useMutation({
-    mutationFn: (apiId: string) => getDownloadUrl(mediaId, apiId),
+    mutationFn: ({ apiId, mediaUrl }: { apiId: string, mediaUrl: string }) => getDownloadUrl(mediaId, apiId, mediaUrl),
     onSuccess: (data) => {
       try {
         const proxyData = JSON.parse(data.proxyResponse);
@@ -167,7 +167,9 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
   };
 
   const handleDownload = (apiId: string) => {
-    getDownloadUrlMutation.mutate(apiId);
+    if (mediaItem) {
+      getDownloadUrlMutation.mutate({ apiId, mediaUrl: mediaItem.url });
+    }
   };
 
   const handleDelete = () => {
