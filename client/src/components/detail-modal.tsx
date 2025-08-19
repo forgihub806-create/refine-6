@@ -342,7 +342,6 @@ export function DetailModal({ mediaId, isOpen, onClose }: DetailModalProps) {
                       <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                         <Button
                           onClick={handlePlay}
-                          disabled={!mediaItem.downloadUrl}
                           className="w-16 h-16 bg-primary rounded-full flex items-center justify-center hover:bg-primary/80"
                         >
                           <Play className="text-white text-xl ml-1" />
